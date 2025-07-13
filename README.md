@@ -1,4 +1,4 @@
-# AI-Scheduling-Assistant
+# AI-Scheduling-Assistant (AMD MI300 GPU)
 
 ### Introduction 
 
