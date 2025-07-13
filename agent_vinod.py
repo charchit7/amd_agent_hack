@@ -166,48 +166,65 @@ class AISchedulingAgent:
         
         date_range = sorted(list(all_dates))
         
-        # Filter dates based on time preference
+        # Filter dates based on time preference with better logic
+        preferred_dates = []
+        
         if "thursday" in time_preference.lower():
-            date_range = [d for d in date_range if d.strftime('%A').lower() == 'thursday']
+            # Find next Thursday or upcoming Thursdays
+            for d in date_range:
+                if d.strftime('%A').lower() == 'thursday':
+                    preferred_dates.append(d)
         elif "monday" in time_preference.lower():
-            date_range = [d for d in date_range if d.strftime('%A').lower() == 'monday']
+            preferred_dates = [d for d in date_range if d.strftime('%A').lower() == 'monday']
         elif "tuesday" in time_preference.lower():
-            date_range = [d for d in date_range if d.strftime('%A').lower() == 'tuesday']
+            preferred_dates = [d for d in date_range if d.strftime('%A').lower() == 'tuesday']
         elif "wednesday" in time_preference.lower():
-            date_range = [d for d in date_range if d.strftime('%A').lower() == 'wednesday']
+            preferred_dates = [d for d in date_range if d.strftime('%A').lower() == 'wednesday']
         elif "friday" in time_preference.lower():
-            date_range = [d for d in date_range if d.strftime('%A').lower() == 'friday']
+            preferred_dates = [d for d in date_range if d.strftime('%A').lower() == 'friday']
+        else:
+            # If no specific day mentioned, prefer weekdays
+            preferred_dates = [d for d in date_range if d.weekday() < 5]  # Monday=0, Sunday=6
+        
+        print(f"🗓️ Available dates: {[str(d) + ' (' + d.strftime('%A') + ')' for d in date_range[:5]]}")
+        print(f"🎯 Preferred dates for '{time_preference}': {[str(d) + ' (' + d.strftime('%A') + ')' for d in preferred_dates[:3]]}")
         
         # Find best available slot on preferred days
-        for date in date_range:
+        for date in preferred_dates:
             free_slots = find_common_free_slots(all_users_events, date, duration_minutes)
             if free_slots:
                 # Return the first available slot
                 best_slot = free_slots[0]
+                print(f"✅ Found slot on {date} ({date.strftime('%A')}): {best_slot['start'].strftime('%H:%M')}")
                 return {
                     'date': date,
                     'start_time': best_slot['start'],
                     'end_time': best_slot['start'] + timedelta(minutes=duration_minutes)
                 }
         
-        # If no slots found on preferred days, try weekdays first
+        # If no slots found on preferred days, try any weekdays
+        print("⚠️ No slots on preferred days, trying any weekday...")
         weekdays = [d for d in sorted(list(all_dates)) if d.weekday() < 5]  # Monday=0, Sunday=6
         for date in weekdays:
-            free_slots = find_common_free_slots(all_users_events, date, duration_minutes)
-            if free_slots:
-                best_slot = free_slots[0]
-                return {
-                    'date': date,
-                    'start_time': best_slot['start'],
-                    'end_time': best_slot['start'] + timedelta(minutes=duration_minutes)
-                }
+            if date not in preferred_dates:  # Skip already checked dates
+                free_slots = find_common_free_slots(all_users_events, date, duration_minutes)
+                if free_slots:
+                    best_slot = free_slots[0]
+                    print(f"✅ Found alternative slot on {date} ({date.strftime('%A')}): {best_slot['start'].strftime('%H:%M')}")
+                    return {
+                        'date': date,
+                        'start_time': best_slot['start'],
+                        'end_time': best_slot['start'] + timedelta(minutes=duration_minutes)
+                    }
         
         # Only try weekends if no weekday slots available
+        print("⚠️ No weekday slots available, trying weekends...")
         weekends = [d for d in sorted(list(all_dates)) if d.weekday() >= 5]  # Saturday=5, Sunday=6
         for date in weekends:
             free_slots = find_common_free_slots(all_users_events, date, duration_minutes)
             if free_slots:
                 best_slot = free_slots[0]
+                print(f"✅ Found weekend slot on {date} ({date.strftime('%A')}): {best_slot['start'].strftime('%H:%M')}")
                 return {
                     'date': date,
                     'start_time': best_slot['start'],
