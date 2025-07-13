@@ -1,6 +1,9 @@
 from flask import Flask, request, jsonify
 from threading import Thread
 import json
+import time
+import signal
+import sys
 
 # Import your final AI scheduling agent
 from agent_vinod import AISchedulingAgent
@@ -45,6 +48,26 @@ def receive():
 def run_flask():
     app.run(host='0.0.0.0', port=5000)
 
+def signal_handler(sig, frame):
+    print('\n🛑 Shutting down server...')
+    sys.exit(0)
 
-# Start Flask in a background thread
-Thread(target=run_flask, daemon=True).start()
+if __name__ == "__main__":
+    # Set up signal handler for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    # Start Flask in a background thread
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    print("🚀 Meeting Assistant Server started on http://0.0.0.0:5000")
+    print("📡 Ready to accept requests...")
+    print("Press Ctrl+C to stop the server")
+    
+    # Keep the main thread alive
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print('\n🛑 Shutting down server...')
+        sys.exit(0)
