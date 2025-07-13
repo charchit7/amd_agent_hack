@@ -18,6 +18,10 @@ The solution can:
 - Learning from user preferences (e.g., preferred times, recurring meetings). 
 
 
+Presentation Slides: 
+```
+https://docs.google.com/presentation/d/1NfQeWcBqESOSamPo8-qYPg1UdlLRcKuL6ZPq7rNZoY8/edit?usp=sharing
+```
 ----------------
 
 ### Prerequisite : 
