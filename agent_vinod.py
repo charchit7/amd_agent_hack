@@ -126,7 +126,6 @@ class AISchedulingAgent:
         - Extract day preferences (Monday, Tuesday, etc.)
         - Be concise and accurate
         - Return ONLY valid JSON, no other text
-        - Avoid SUNDAY and SATURDAY
         """
         
         try:
@@ -172,9 +171,14 @@ class AISchedulingAgent:
             date_range = [d for d in date_range if d.strftime('%A').lower() == 'thursday']
         elif "monday" in time_preference.lower():
             date_range = [d for d in date_range if d.strftime('%A').lower() == 'monday']
-        # Add more day filters as needed
+        elif "tuesday" in time_preference.lower():
+            date_range = [d for d in date_range if d.strftime('%A').lower() == 'tuesday']
+        elif "wednesday" in time_preference.lower():
+            date_range = [d for d in date_range if d.strftime('%A').lower() == 'wednesday']
+        elif "friday" in time_preference.lower():
+            date_range = [d for d in date_range if d.strftime('%A').lower() == 'friday']
         
-        # Find best available slot
+        # Find best available slot on preferred days
         for date in date_range:
             free_slots = find_common_free_slots(all_users_events, date, duration_minutes)
             if free_slots:
@@ -186,8 +190,21 @@ class AISchedulingAgent:
                     'end_time': best_slot['start'] + timedelta(minutes=duration_minutes)
                 }
         
-        # If no slots found on preferred days, try any day
-        for date in sorted(list(all_dates)):
+        # If no slots found on preferred days, try weekdays first
+        weekdays = [d for d in sorted(list(all_dates)) if d.weekday() < 5]  # Monday=0, Sunday=6
+        for date in weekdays:
+            free_slots = find_common_free_slots(all_users_events, date, duration_minutes)
+            if free_slots:
+                best_slot = free_slots[0]
+                return {
+                    'date': date,
+                    'start_time': best_slot['start'],
+                    'end_time': best_slot['start'] + timedelta(minutes=duration_minutes)
+                }
+        
+        # Only try weekends if no weekday slots available
+        weekends = [d for d in sorted(list(all_dates)) if d.weekday() >= 5]  # Saturday=5, Sunday=6
+        for date in weekends:
             free_slots = find_common_free_slots(all_users_events, date, duration_minutes)
             if free_slots:
                 best_slot = free_slots[0]
@@ -199,6 +216,131 @@ class AISchedulingAgent:
         
         return None
     
+    def user_helper(self, email_content, attendees_list, optimal_time, all_users_events):
+        """
+        This function helps the user understand their meeting scheduling decision.
+        
+        Args:
+            email_content: Original email content
+                - this is the prompt which user gives. For example:
+                    "Hi team, let's meet on Thursday for 30 minutes to discuss the status of Agentic AI Project."   
+            attendees_list: List of attendee emails
+                - this is the list of emails of attendees
+            optimal_time: The scheduled meeting time
+                - this is the time which is suggested by the AI
+            all_users_events: All attendees' calendar events
+                - this is the list of events of all attendees
+
+        Returns:
+            dict: Reasoning and insights about the scheduled meeting
+        """
+        
+        # Extract key meeting details
+        meeting_date = optimal_time['start_time'].strftime('%A, %B %d, %Y')
+        meeting_time = optimal_time['start_time'].strftime('%I:%M %p')
+        meeting_end = optimal_time['end_time'].strftime('%I:%M %p')
+        
+        # Count existing meetings for each attendee on that day
+        meeting_counts = {}
+        for email, events in all_users_events.items():
+            day_meetings = 0
+            for event in events:
+                event_date = self.parse_datetime(event['StartTime']).date()
+                if event_date == optimal_time['start_time'].date() and 'Off Hours' not in event['Summary']:
+                    day_meetings += 1
+            meeting_counts[email] = day_meetings
+        
+        # Analyze conflicts that were avoided (simplified analysis)
+        conflicts_avoided = []
+        for email, events in all_users_events.items():
+            for event in events:
+                event_start = self.parse_datetime(event['StartTime'])
+                event_end = self.parse_datetime(event['EndTime'])
+                # Check if there were potential conflicts around the scheduled time
+                if (abs((event_start - optimal_time['start_time']).total_seconds()) < 3600 and 
+                    'Off Hours' not in event['Summary']):
+                    conflicts_avoided.append(f"{email}: {event['Summary']}")
+        
+        prompt = f"""
+        You are an EVENT SCHEDULING EXPERT ASSISTANT. Analyze this meeting scheduling decision and provide helpful insights.
+        
+        MEETING DETAILS:
+        - Email Content: "{email_content}"
+        - Attendees: {', '.join(attendees_list)}
+        - Scheduled Time: {meeting_date} at {meeting_time} - {meeting_end}
+        
+        ATTENDEE WORKLOAD:
+        {chr(10).join([f"- {email}: {count} other meetings on this day" for email, count in meeting_counts.items()])}
+        
+        CONFLICTS AVOIDED:
+        {chr(10).join([f"- {conflict}" for conflict in conflicts_avoided]) if conflicts_avoided else "- No conflicts detected"}
+        
+        Please provide:
+        1. Why this time slot is optimal for all attendees
+        2. Key benefits of this scheduling decision
+        3. Any considerations the organizer should keep in mind
+        4. Productivity tips for making the meeting effective
+        
+        Format your response as a helpful, concise JSON with these keys:
+        - "reasoning": Brief explanation of why this time works well
+        - "benefits": List of 2-3 key benefits
+        - "considerations": List of 1-2 things to keep in mind
+        - "confidence_score": Your confidence in this scheduling (high/medium/low)
+        """
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_path,
+                temperature=0.1,  # Slightly creative but still focused
+                messages=[{
+                    "role": "system",
+                    "content": "You are a helpful EXPERT SCHEDULING ASSISTANT that provides clear, actionable insights about meeting scheduling decisions."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+            
+            content = response.choices[0].message.content.strip()
+            
+            # Clean up the response to ensure it's valid JSON
+            if content.startswith('```json'):
+                content = content.replace('```json', '').replace('```', '').strip()
+            
+            # Parse the JSON response
+            import json
+            try:
+                reasoning_data = json.loads(content)
+            except json.JSONDecodeError:
+                # Fallback if AI doesn't return valid JSON
+                reasoning_data = {
+                    "reasoning": f"Scheduled for {meeting_date} at {meeting_time} to accommodate all attendees' availability.",
+                    "benefits": [
+                        "All attendees are available at this time",
+                        "No conflicts with existing meetings",
+                        "Optimal time slot for productivity"
+                    ],
+                    "confidence_score": "high"
+                }
+            
+            # Add additional metadata
+            reasoning_data["scheduled_datetime"] = optimal_time['start_time'].isoformat()
+            reasoning_data["attendee_count"] = len(attendees_list)
+            
+            return reasoning_data
+            
+        except Exception as e:
+            # Return a basic reasoning if AI fails
+            return {
+                "reasoning": f"Meeting scheduled at {meeting_time} on {meeting_date} based on all attendees' availability.",
+                "benefits": ["All attendees available", "No scheduling conflicts"],
+                "confidence_score": "medium",
+                "error": str(e),
+                "scheduled_datetime": optimal_time['start_time'].isoformat(),
+                "attendee_count": len(attendees_list)
+            }
+
     def generate_output_format(self, request_data, optimal_time, all_users_events, duration_minutes):
         """Generate the exact output format required"""
         
@@ -224,6 +366,25 @@ class AISchedulingAgent:
         all_attendees = [request_data["From"]]
         for att in request_data["Attendees"]:
             all_attendees.append(att["email"])
+        
+        # Generate AI-powered insights for the MetaData field
+        try:
+            attendee_emails = [att["email"] for att in request_data["Attendees"]]
+            metadata_insights = self.user_helper(
+                request_data["EmailContent"],
+                attendee_emails,
+                optimal_time,
+                all_users_events
+            )
+            response["MetaData"] = metadata_insights
+            print('EXTRACTED FROM DEEPSEEK',metadata_insights)
+        except Exception as e:
+            print(f"⚠️ Warning: Could not generate metadata insights: {e}")
+            response["MetaData"] = {
+                "reasoning": "Meeting scheduled based on attendee availability",
+                "confidence_score": "medium",
+                "error": str(e)
+            }
         
         # Create the new meeting event
         new_meeting = {

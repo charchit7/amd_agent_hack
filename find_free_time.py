@@ -35,7 +35,7 @@ def get_user_working_hours(user_email, events_list):
     
     if not off_hours_events:
         # Default working hours if no Off Hours found
-        return (7, 30), (18, 0)  # 7:30 AM to 6 PM
+        return (9, 0), (17, 30)  # 9:00 AM to 5:30 PM
     
     # Analyze Off Hours pattern to determine working hours
     sample_event = off_hours_events[0]
@@ -291,8 +291,6 @@ def analyze_multi_user_availability(all_users_events):
     for date in all_dates:
         print(f"\n🗓️  {date} ({date.strftime('%A')}):")
         free_slots = find_common_free_slots(all_users_events, date, 30)
-        print('testing free slots')
-        print(free_slots)
         
         if free_slots:
             print(f"   ✅ {len(free_slots)} common free slots:")
@@ -309,7 +307,7 @@ def analyze_multi_user_availability(all_users_events):
     if suggestions:
         print(f"\n🏆 TOP 3 MEETING SUGGESTIONS (30 mins):")
         for i, suggestion in enumerate(suggestions[:3], 1):
-            print(f"{i}. {suggestion['date']} ({suggestion['day_of_week']}) at {suggestion['start_time'].strftime('%H:%M')}")
+            print(f"   {i}. {suggestion['date']} ({suggestion['day_of_week']}) at {suggestion['start_time'].strftime('%H:%M')}")
     
     return {
         'total_available_slots': total_slots,
